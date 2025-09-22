@@ -1,0 +1,548 @@
+  <!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Student WellBeing — Pro Offline Demo</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- Tailwind via CDN for styling -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- React + ReactDOM via CDN -->
+  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+
+  <style>
+    /* Extra custom styles for polish */
+    .glass {
+      background: linear-gradient(90deg, rgba(255,255,255,0.65), rgba(255,255,255,0.35));
+      backdrop-filter: blur(6px) saturate(120%);
+    }
+    .card-hover:hover { transform: translateY(-6px); box-shadow: 0 20px 40px rgba(2,6,23,0.12); }
+    .pulse-breathe { animation: breathe 4s ease-in-out infinite; }
+    @keyframes breathe {
+      0% { transform: scale(1); opacity:1; }
+      50% { transform: scale(1.25); opacity:0.85; }
+      100% { transform: scale(1); opacity:1; }
+    }
+    .fade-in { animation: fadein 600ms ease both; }
+    @keyframes fadein { from { opacity: 0; transform: translateY(6px); } to { opacity:1; transform:none } }
+    .highlight-ring { box-shadow: 0 8px 30px rgba(99,102,241,0.12); transform: translateY(-4px); }
+    /* custom scrollbar for chat */
+    .chat-scroll::-webkit-scrollbar { width: 8px; height:8px; }
+    .chat-scroll::-webkit-scrollbar-thumb { background: rgba(100,116,255,0.25); border-radius: 999px; }
+    /* typing dots */
+    .typing-dots span { display:inline-block; width:6px; height:6px; margin:0 3px; background:#bbb; border-radius:999px; animation: blink 1s infinite; }
+    .typing-dots span:nth-child(2){ animation-delay: 0.15s }
+    .typing-dots span:nth-child(3){ animation-delay: 0.3s }
+    @keyframes blink { 0% { opacity:0.3 } 50% { opacity:1 } 100% { opacity:0.3 } }
+  </style>
+</head>
+<body class="antialiased bg-gradient-to-br from-indigo-50 to-pink-50 dark:from-gray-900 dark:to-gray-800 transition-colors">
+  <div id="root" class="min-h-screen"></div>
+
+  <script type="text/javascript">
+  // Single-file React app — no external chart libraries, everything implemented with SVG and CSS
+  const e = React.createElement;
+
+  /* ----------------- Helpers ----------------- */
+  function cls(...c){ return c.filter(Boolean).join(' '); }
+  function formatDateISO(d){ return new Date(d).toLocaleString(); }
+  function downloadBlob(filename, text){
+    const blob = new Blob([text], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename; a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  /* ----------------- Dark Mode Toggle ----------------- */
+  function DarkModeToggle(){
+    const [dark, setDark] = React.useState(false);
+    React.useEffect(()=>{
+      if(dark) document.documentElement.classList.add('dark');
+      else document.documentElement.classList.remove('dark');
+    },[dark]);
+    return e('button',{
+      onClick:()=>setDark(d=>!d),
+      className:"px-3 py-1 rounded-md bg-white/60 dark:bg-gray-700 text-sm shadow-sm"
+    }, dark ? '☀️ Light' : '🌙 Dark');
+  }
+
+  /* ----------------- Focus & Data Contexts ----------------- */
+  const DataContext = React.createContext();
+  const FocusContext = React.createContext();
+
+  /* ----------------- MoodCheck component ----------------- */
+  function MoodCheck(){
+    const [mood, setMood] = React.useState(3);
+    const [stress, setStress] = React.useState(5);
+    const [note, setNote] = React.useState('');
+    const [status, setStatus] = React.useState('');
+    const { addEntry } = React.useContext(DataContext);
+    const { setFocus } = React.useContext(FocusContext);
+
+    function save(){
+      addEntry({ mood, stress, note, time: new Date().toISOString() });
+      setStatus(`Saved ✓ Mood ${mood}/5 • Stress ${stress}/10`);
+      setNote('');
+      // small celebratory animation or focus
+      setTimeout(()=>setStatus(''), 3000);
+    }
+
+    return e('div', { className: "p-6 rounded-2xl glass shadow-sm card-hover fade-in" },
+      e('h3', { className: "text-lg font-semibold text-indigo-700" }, "Mood & Stress"),
+      e('p', { className: "text-sm text-gray-600 mb-3" }, "Quick check — this helps you track trends over time."),
+      // Mood slider with emoji
+      e('div', { className: "mb-3" },
+        e('label', { className: "block text-sm text-gray-500 mb-1" }, "How happy are you today?"),
+        e('input', { type:"range", min:1, max:5, value:mood, onChange: (ev)=>setMood(Number(ev.target.value)), className:"w-full" }),
+        e('div', { className: "mt-2 text-2xl text-center" }, ["😢","😟","😐","🙂","😄"][mood-1])
+      ),
+      // Stress slider
+      e('div', { className: "mb-3" },
+        e('label', { className: "block text-sm text-gray-500 mb-1" }, "Stress level (1–10)"),
+        e('input', { type:"range", min:1, max:10, value:stress, onChange: (ev)=>setStress(Number(ev.target.value)), className:"w-full" })
+      ),
+      e('textarea',{ value: note, onChange:ev=>setNote(ev.target.value), placeholder:"Add a quick note (optional)", className:"w-full p-3 rounded-md border dark:bg-gray-700" }),
+      e('div',{ className:"flex items-center justify-between mt-4" },
+        e('div',{ className:"text-sm text-gray-500" }, status || e('span', null, ' ')),
+        e('div', null,
+          e('button', { onClick: ()=>{ setFocus('dashboard'); save(); }, className: "mr-2 px-4 py-2 rounded-lg bg-indigo-600 text-white shadow" }, "Save & View"),
+          e('button', { onClick: save, className: "px-4 py-2 rounded-lg border border-gray-300" }, "Save")
+        )
+      )
+    );
+  }
+
+  /* ----------------- BreathingExercise with animated pulsing circle ----------------- */
+  function BreathingExercise(){
+    const { focus } = React.useContext(FocusContext);
+    const ref = React.useRef();
+    // auto-scroll into view when focused
+    React.useEffect(()=>{ if(focus === 'breathing' && ref.current){ ref.current.scrollIntoView({ behavior: 'smooth', block: 'center' }); } },[focus]);
+
+    // simple breath guide state
+    const [phase, setPhase] = React.useState({text:"Ready", color:"bg-green-400"});
+    React.useEffect(()=>{
+      let running = true;
+      let i=0;
+      const cycle = [
+        { text:"Inhale", duration:4000 },
+        { text:"Hold", duration:2000 },
+        { text:"Exhale", duration:6000 },
+        { text:"Relax", duration:2000 }
+      ];
+      const tick = ()=> {
+        if(!running) return;
+        const step = cycle[i%cycle.length];
+        setPhase({ text: `${step.text}`, color: "bg-green-400" });
+        i++;
+        setTimeout(tick, step.duration);
+      };
+      tick();
+      return ()=>{ running=false; };
+    },[]);
+
+    return e('div', { ref, className: cls("p-6 rounded-2xl shadow-lg transition-all", focus === 'breathing' ? 'highlight-ring scale-105' : 'glass') },
+      e('div', { className:"flex items-center justify-between" },
+        e('h3',{ className:"text-lg font-semibold text-green-700" }, "Breathing Exercise"),
+        e('small',{ className:"text-xs text-gray-500" }, "2–3 min guide")
+      ),
+      e('div',{ className:"mt-4 flex items-center gap-6" },
+        // animated circle
+        e('div', { className:"relative w-36 h-36 flex items-center justify-center" },
+          e('div', {
+            className: "rounded-full pulse-breathe",
+            style: { width: '140px', height: '140px', background: 'radial-gradient(circle at 30% 20%, rgba(99,102,241,0.18), rgba(99,102,241,0.06))', display:'flex', alignItems:'center', justifyContent:'center' }
+          }),
+          e('div', { className:"absolute text-center text-indigo-700 font-semibold" },
+            e('div', { className:"text-xl" }, phase.text),
+            e('div', { className:"text-xs text-gray-500 mt-1" }, "Follow the rhythm")
+          )
+        ),
+        e('div', { className:"flex-1 text-sm text-gray-600" },
+          e('p', null, "Follow the pulsing circle to guide your breathing. Controlled breathing reduces stress quickly."),
+          e('div', { className:"mt-3" },
+            e('button', { onClick: ()=>{ if(ref.current) ref.current.scrollIntoView({behavior:'smooth', block:'center'}); }, className:"px-3 py-2 rounded-md bg-green-600 text-white" }, "Center & Focus"),
+            e('button', { onClick: ()=>{ /* can add audio tone with WebAudio if desired */ }, className:"ml-2 px-3 py-2 rounded-md border" }, "Play Tone")
+          )
+        )
+      )
+    );
+  }
+
+  /* ----------------- Gratitude Journal ----------------- */
+  function Gratitude(){
+    const { focus } = React.useContext(FocusContext);
+    const ref = React.useRef();
+    React.useEffect(()=>{ if(focus === 'gratitude' && ref.current){ ref.current.scrollIntoView({ behavior: 'smooth', block: 'center' }); } },[focus]);
+
+    const [entry, setEntry] = React.useState('');
+    const [list, setList] = React.useState([]);
+    function add(){
+      if(!entry.trim()) return;
+      setList(prev => [{ text: entry.trim(), time: new Date().toISOString() }, ...prev]);
+      setEntry('');
+    }
+
+    // daily prompt sample
+    const prompt = "What small thing made you smile today?";
+
+    return e('div', { ref, className: cls("p-6 rounded-2xl shadow-lg transition-all", focus === 'gratitude' ? 'highlight-ring scale-105' : 'glass') },
+      e('div',{ className:"flex items-center justify-between" },
+        e('h3',{ className:"text-lg font-semibold text-pink-700" }, "Gratitude Journal"),
+        e('small',{ className:"text-xs text-gray-500" }, "Daily wellbeing practice")
+      ),
+      e('p',{ className:"text-sm text-gray-600 mt-2" }, prompt),
+      e('textarea', { value: entry, onChange: ev=>setEntry(ev.target.value), placeholder: "Write something...", className:"w-full p-3 rounded-md border mt-2 dark:bg-gray-700" }),
+      e('div',{ className:"flex items-center justify-between mt-3" },
+        e('div', { className:"text-xs text-gray-500" }, `${list.length} entries`),
+        e('button', { onClick: add, className:"px-4 py-2 bg-pink-600 text-white rounded-lg" }, "Add")
+      ),
+      e('div', { className:"mt-4 grid grid-cols-1 gap-3" },
+        list.map((it, idx) => e('div', { key: idx, className: "p-3 bg-pink-50 dark:bg-pink-900 rounded-lg" },
+          e('div', { className:"text-sm" }, it.text),
+          e('div', { className:"text-xs text-gray-400 mt-2" }, formatDateISO(it.time))
+        ))
+      )
+    );
+  }
+
+  /* ----------------- QuickQuiz component ----------------- */
+  function QuickQuiz(){
+    const { focus } = React.useContext(FocusContext);
+    const ref = React.useRef();
+    React.useEffect(()=>{ if(focus === 'quiz' && ref.current){ ref.current.scrollIntoView({ behavior: 'smooth', block: 'center' }); } },[focus]);
+
+    const questions = [
+      "Did you sleep well last night?",
+      "Did you take any breaks during study?",
+      "Were you able to reach out to someone?",
+    ];
+    const [answers, setAnswers] = React.useState(Array(questions.length).fill(null));
+    function setAns(i, val){ setAnswers(prev=>{ const copy=[...prev]; copy[i]=val; return copy; }); }
+    function score(){
+      const valid = answers.every(a => a !== null);
+      if(!valid) return { ok:false, msg: "Please answer all questions." };
+      const scoreVal = answers.filter(a=>a).length;
+      return { ok:true, score:scoreVal, msg:`You scored ${scoreVal}/${questions.length}` };
+    }
+
+    const result = score();
+
+    return e('div', { ref, className: cls("p-6 rounded-2xl shadow-lg transition-all", focus === 'quiz' ? 'highlight-ring scale-105' : 'glass') },
+      e('h3', { className:"text-lg font-semibold text-yellow-700" }, "Reflection Quiz"),
+      e('p', { className:"text-sm text-gray-600 mt-1" }, "Short self-check to reflect on the past week."),
+      questions.map((q, i) => e('div', { key:i, className:"mt-3" },
+        e('div', { className:"text-sm mb-2" }, q),
+        e('div', { className:"flex gap-2" },
+          e('button',{ onClick: ()=>setAns(i, true), className: cls("px-3 py-2 rounded-md", answers[i] === true ? 'bg-yellow-500 text-white' : 'border') } , "Yes"),
+          e('button',{ onClick: ()=>setAns(i, false), className: cls("px-3 py-2 rounded-md", answers[i] === false ? 'bg-yellow-500 text-white' : 'border') } , "No")
+        )
+      )),
+      e('div', { className:"mt-4 flex items-center justify-between" },
+        e('div', { className:"text-xs text-gray-500" }, result.ok ? result.msg : 'Answer all to get results'),
+        e('div', null, e('button', { onClick: ()=>{ if(result.ok) alert("Tip: Try 10 minutes breathing or a short walk."); else alert(result.msg); }, className:"px-4 py-2 rounded-lg bg-yellow-600 text-white" }, "See Tip"))
+      )
+    );
+  }
+
+  /* ----------------- Dashboard with SVG charts (line + bars) + CSV export ----------------- */
+  function Dashboard(){
+    const { entries } = React.useContext(DataContext);
+    const { focus } = React.useContext(FocusContext);
+    const ref = React.useRef();
+    React.useEffect(()=>{ if(focus === 'dashboard' && ref.current) ref.current.scrollIntoView({ behavior: 'smooth', block: 'center' }); },[focus]);
+
+    // prepare data (limit to last 14 entries)
+    const data = entries.slice(-14);
+    const labels = data.map((d,i)=>`D${i+1}`);
+    const moods = data.map(d => d.mood);
+    const stresses = data.map(d => d.stress);
+
+    // compute summary
+    const avgMood = data.length ? (moods.reduce((a,b)=>a+b,0)/moods.length).toFixed(2) : '-';
+    const avgStress = data.length ? (stresses.reduce((a,b)=>a+b,0)/stresses.length).toFixed(2) : '-';
+
+    // SVG dimensions
+    const w = 360, h = 120, padding = 24;
+    function mapY(val, min, max){ return padding + ((max - val) / (max - min)) * (h - 2*padding); }
+    function mapX(i){ if(labels.length<=1) return padding + i * ((w - 2*padding) / Math.max(1, labels.length-1)); return padding + i * ((w - 2*padding) / (labels.length-1)); }
+
+    // build line path for moods (1-5)
+    const yMinMood = 1, yMaxMood = 5;
+    const linePath = moods.map((m, i) => `${i===0 ? 'M' : 'L'} ${mapX(i)} ${mapY(m, yMinMood, yMaxMood)}`).join(' ');
+
+    // bar widths
+    const barWidth = labels.length ? Math.max(6, (w - 2*padding) / labels.length - 6) : 6;
+
+    // CSV download
+    function downloadCSV(){
+      const rows = [["Index","Time","Mood","Stress","Note"]];
+      entries.forEach((en,i)=> rows.push([i+1, en.time, en.mood, en.stress, en.note ? en.note.replace(/"/g,'""') : ""]));
+      const csv = rows.map(r => r.map(c => `"${c}"`).join(',')).join('\n');
+      downloadBlob('studentwellbeing_data.csv', csv);
+    }
+
+    return e('div', { ref, className: cls("p-6 rounded-2xl shadow-lg transition-all", focus === 'dashboard' ? 'highlight-ring scale-105' : 'glass') },
+      e('div', { className:"flex items-center justify-between" },
+        e('div', null, e('h3',{ className:"text-lg font-semibold text-indigo-700" }, "Dashboard"), e('div',{ className:"text-xs text-gray-500" }, "Trends & stats")),
+        e('div', null,
+          e('button',{ onClick: downloadCSV, className:"px-3 py-2 bg-green-600 text-white rounded-md mr-2" }, "⬇️ Export CSV"),
+          e('button',{ onClick: ()=>{ if(ref.current) ref.current.scrollIntoView({behavior:'smooth', block:'center'}); }, className:"px-3 py-2 border rounded-md" }, "Center")
+        )
+      ),
+      // summary tiles
+      e('div',{ className:"mt-4 grid grid-cols-2 gap-3" },
+        e('div',{ className:"p-3 bg-white/60 dark:bg-gray-800 rounded-lg" },
+          e('div',{ className:"text-xs text-gray-500" }, "Average Mood"),
+          e('div',{ className:"text-2xl font-semibold text-indigo-700" }, avgMood)
+        ),
+        e('div',{ className:"p-3 bg-white/60 dark:bg-gray-800 rounded-lg" },
+          e('div',{ className:"text-xs text-gray-500" }, "Average Stress"),
+          e('div',{ className:"text-2xl font-semibold text-red-600" }, avgStress)
+        )
+      ),
+      // charts
+      e('div',{ className:"mt-4 grid grid-cols-1 md:grid-cols-2 gap-4 items-start" },
+        // Line chart (mood)
+        e('div', { className:"p-3 bg-white/60 dark:bg-gray-800 rounded-lg" },
+          e('div', { className:"text-xs text-gray-500 mb-2" }, "Mood over time"),
+          e('svg', { width: w, height: h },
+            // grid lines
+            e('line', { x1: padding, y1: padding, x2: w - padding, y2: padding, stroke: '#eee' }),
+            e('line', { x1: padding, y1: h - padding, x2: w - padding, y2: h - padding, stroke: '#eee' }),
+            // labels
+            labels.map((lab,i) => {
+              const x = mapX(i);
+              return e('text', { key: i, x, y: h - 4, fontSize:9, textAnchor:'middle', fill:'#666' }, lab);
+            }),
+            // mood line
+            e('path', { d: linePath || `M ${padding} ${mapY(3,yMinMood,yMaxMood)} L ${w-padding} ${mapY(3,yMinMood,yMaxMood)}`, stroke: '#6366F1', strokeWidth:2.5, fill:'none', strokeLinecap:'round' }),
+            // points
+            moods.map((m,i) => {
+              const cx = mapX(i); const cy = mapY(m, yMinMood, yMaxMood);
+              return e('circle', { key:i, cx, cy, r:4.5, fill:'#6366F1', stroke:'#fff', strokeWidth:1.2 });
+            })
+          )
+        ),
+        // Bar chart (stress)
+        e('div', { className:"p-3 bg-white/60 dark:bg-gray-800 rounded-lg" },
+          e('div',{ className:"text-xs text-gray-500 mb-2" }, "Stress over time"),
+          e('svg', { width: w, height: h },
+            // axes
+            e('line', { x1: padding, y1: padding, x2: padding, y2: h - padding, stroke:'#eee' }),
+            e('line', { x1: padding, y1: h - padding, x2: w - padding, y2: h - padding, stroke:'#eee' }),
+            // bars
+            labels.map((lab,i)=>{
+              const x = padding + i * ((w - 2*padding) / Math.max(1, labels.length));
+              const s = stresses[i] || 0;
+              const barMax = 10;
+              const barH = ((s / barMax) * (h - 2*padding));
+              const y = h - padding - barH;
+              return e('rect', { key:i, x: x + 6, y, width:barWidth, height:barH, fill:'#ef4444', rx:4 });
+            }),
+            // labels
+            labels.map((lab,i)=> {
+              const x = mapX(i);
+              return e('text', { key: 'l'+i, x, y: h - 4, fontSize:9, textAnchor:'middle', fill:'#666' }, lab);
+            })
+          )
+        )
+      ),
+      // recent entries
+      e('div', { className:"mt-4" },
+        e('h4', { className:"text-sm font-semibold text-gray-600" }, "Recent entries"),
+        e('div', { className:"mt-2 space-y-2 max-h-36 overflow-auto border rounded p-2" },
+          entries.slice().reverse().map((en, i) => e('div', { key: i, className:"flex justify-between items-center text-sm" },
+            e('div', null, `Mood ${en.mood}/5 • Stress ${en.stress}/10`),
+            e('div', { className:"text-xs text-gray-400" }, formatDateISO(en.time))
+          ))
+        )
+      )
+    );
+  }
+
+  /* ----------------- Chatbot: context-aware + control panels + typing ----------------- */
+  function Chatbot(){
+    const { setFocus } = React.useContext(FocusContext);
+    const { addEntry } = React.useContext(DataContext);
+    const [messages, setMessages] = React.useState([{ from: 'bot', text: "👋 Hi — I'm here to listen. Share anything, or type 'help' to see options." }]);
+    const [input, setInput] = React.useState('');
+    const [isTyping, setIsTyping] = React.useState(false);
+    const memory = React.useRef({ positive:0, negative:0, lastTopics: [] });
+    const containerRef = React.useRef();
+
+    // auto-scroll to bottom when messages change
+    React.useEffect(()=>{
+      if(containerRef.current) containerRef.current.scrollTop = containerRef.current.scrollHeight;
+    },[messages, isTyping]);
+
+    function analyzeAndRespond(text){
+      const low = ["sad","depressed","hopeless","lonely","alone","cry"];
+      const stress = ["stress","stressed","anxious","anxiety","overwhelmed"];
+      const tired = ["tired","exhausted","sleep","sleepy"];
+      const happy = ["happy","good","great","awesome","ok","fine"];
+      const exams = ["exam","exams","test","assignment","deadline","study"];
+      const msg = text.toLowerCase();
+
+      // update memory
+      if(low.some(k=>msg.includes(k))) memory.current.negative++;
+      if(stress.some(k=>msg.includes(k))) memory.current.negative++;
+      if(tired.some(k=>msg.includes(k))) memory.current.negative++;
+      if(happy.some(k=>msg.includes(k))) memory.current.positive++;
+      // remember topics
+      memory.current.lastTopics.unshift(text);
+      memory.current.lastTopics = memory.current.lastTopics.slice(0, 6);
+
+      // Replies and panel triggers
+      if(stress.some(k=>msg.includes(k))){
+        setFocus('breathing');
+        return { text: "I hear you — it sounds stressful. Let's try a short breathing exercise. I'll open it for you.", type: 'action', action: 'breathing' };
+      }
+      if(low.some(k=>msg.includes(k))){
+        setFocus('gratitude');
+        return { text: "I'm sorry you're feeling down. Writing in your Gratitude Journal can help. I'll open it for you.", type:'action', action:'gratitude' };
+      }
+      if(tired.some(k=>msg.includes(k))){
+        setFocus('breathing');
+        return { text: "You sound tired — try a short rest and breathing. Small naps help too.", type:'advice' };
+      }
+      if(exams.some(k=>msg.includes(k))){
+        setFocus('quiz');
+        return { text: "Exam stress is common — would you like a quick reflection quiz? I'll open the quiz for you.", type:'action', action:'quiz' };
+      }
+      if(msg.includes('help')){
+        return { text: "Try: 'I'm stressed', 'I'm sad', 'I have exams', 'I'm tired', or 'I'm happy' — I can open exercises for you.", type:'info' };
+      }
+      // default: friendly contextual reply
+      const defaults = [
+        "Thanks for sharing — small steps help. Try the breathing tool or write a short note.",
+        "You're not alone. If it helps, try the Gratitude Journal to note one tiny win.",
+        "I see — remember to pause and breathe. Want me to open the breathing exercise?"
+      ];
+      const reply = defaults[Math.floor(Math.random()*defaults.length)];
+      return { text: reply, type:'info' };
+    }
+
+    function send(){
+      const txt = input.trim();
+      if(!txt) return;
+      setMessages(prev => [...prev, { from: 'user', text: txt }]);
+      setInput('');
+      setIsTyping(true);
+
+      setTimeout(()=> {
+        const r = analyzeAndRespond(txt);
+        setMessages(prev => [...prev, { from:'bot', text: r.text }]);
+        setIsTyping(false);
+        // optionally do immediate actions
+        if(r.type === 'action' && r.action){
+          // extra highlight handled by FocusContext; could auto-open panels etc.
+          // If user said 'exams' we'll also add an anonymous tip entry optionally:
+          if(r.action === 'breathing') {
+            // nothing more here; focus already set
+          } else if(r.action === 'gratitude') {
+            // focus set
+          } else if(r.action === 'quiz') {
+            // focus set
+          }
+        }
+      }, 1000 + Math.random()*800);
+    }
+
+    // quick helper buttons (impress judges)
+    function quick(type){
+      const mapping = {
+        stressed: "I'm feeling stressed and overwhelmed by deadlines.",
+        sad: "I feel really down today.",
+        exam: "I have exams coming up and I'm stressed.",
+        happy: "I'm actually feeling pretty good today!"
+      };
+      const text = mapping[type];
+      setInput(text);
+      setTimeout(()=> send(), 150);
+    }
+
+    return e('div', { className: "p-6 rounded-2xl shadow-lg glass flex flex-col" },
+      e('div', { className: "flex items-center justify-between mb-2" },
+        e('h3', { className:"text-lg font-semibold text-purple-700" }, "Support Chat"),
+        e('div', { className: "flex gap-2" },
+          e('button', { onClick: ()=> quick('stressed'), className:"text-xs px-2 py-1 rounded bg-indigo-50" }, "Quick: Stressed"),
+          e('button', { onClick: ()=> quick('sad'), className:"text-xs px-2 py-1 rounded bg-pink-50" }, "Quick: Sad"),
+          e('button', { onClick: ()=> quick('exam'), className:"text-xs px-2 py-1 rounded bg-yellow-50" }, "Quick: Exam")
+        )
+      ),
+      e('div', { ref: containerRef, className:"flex-1 overflow-auto chat-scroll mb-3 space-y-2 max-h-72 p-2" },
+        messages.map((m, i) => e('div', { key:i, className: cls("max-w-full px-3 py-2 rounded-lg", m.from === 'user' ? 'bg-indigo-100 self-end text-right ml-auto' : 'bg-gray-100 dark:bg-gray-700') }, m.text)),
+        isTyping && e('div', { className: "text-sm text-gray-500 typing-dots" }, 
+          e('span', null), e('span', null), e('span', null)
+        )
+      ),
+      e('div', { className: "flex gap-2" },
+        e('input', { value: input, onChange: ev=>setInput(ev.target.value), placeholder:"Type how you feel... (try: I'm stressed)", className:"flex-1 p-2 rounded-md border dark:bg-gray-700" }),
+        e('button', { onClick: send, className:"px-4 py-2 bg-purple-600 text-white rounded-md" }, "Send")
+      )
+    );
+  }
+
+  /* ----------------- App root ----------------- */
+  function App(){
+    const [entries, setEntries] = React.useState([]);
+    const [focus, setFocus] = React.useState(null);
+
+    function addEntry(e){ setEntries(prev => [...prev, e]); }
+
+    return e(DataContext.Provider, { value: { entries, addEntry } },
+      e(FocusContext.Provider, { value: { focus, setFocus } },
+        e('div', { className: "min-h-screen flex flex-col" },
+          // Nav
+          e('nav', { className: "bg-gradient-to-r from-indigo-600 to-purple-600 text-white p-4 shadow-lg" },
+            e('div', { className: "max-w-6xl mx-auto flex items-center justify-between" },
+              e('div', { className: "flex items-center gap-3" },
+                e('div', { className: "w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center font-bold" }, "SW"),
+                e('div', null, e('div', { className:"text-sm font-semibold" }, "StudentWellbeing"), e('div', { className:"text-xs text-indigo-200" }, "Digital mental health for students"))
+              ),
+              e('div', null, e(DarkModeToggle))
+            )
+          ),
+
+          // Hero
+          e('header', { className: "max-w-6xl mx-auto text-center py-10 px-4" },
+            e('h1', { className: "text-3xl md:text-4xl font-extrabold text-gray-800 dark:text-gray-100" }, "Care for your mind — every day"),
+            e('p', { className: "mt-3 text-gray-600 dark:text-gray-300" }, "A friendly, private companion for emotional wellbeing at university"),
+            e('div', { className: "mt-4 flex items-center justify-center gap-3" },
+              e('button', { onClick: ()=> setFocus('breathing'), className: "px-4 py-2 bg-green-600 text-white rounded-full shadow" }, "Start Breathing"),
+              e('button', { onClick: ()=> setFocus('gratitude'), className: "px-4 py-2 bg-pink-600 text-white rounded-full shadow" }, "Open Journal"),
+              e('button', { onClick: ()=> setFocus('dashboard'), className: "px-4 py-2 border rounded-full" }, "View Dashboard")
+            )
+          ),
+
+          // Main grid
+          e('main', { className: "max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 px-4 pb-12" },
+            // Left column top: MoodCheck
+            e(MoodCheck),
+            // Breathing and Gratitude
+            e(BreathingExercise),
+            e(Gratitude),
+            // QuickQuiz
+            e(QuickQuiz),
+            // Dashboard spanning columns
+            e(Dashboard),
+            // Chatbot
+            e(Chatbot)
+          ),
+
+          // Footer
+          e('footer', { className: "text-center py-6 text-xs text-gray-500" }, "Prototype — not a clinical tool. For demo only.")
+        )
+      )
+    );
+  }
+
+  // mount
+  const root = ReactDOM.createRoot(document.getElementById('root'));
+  root.render(e(App));
+
+  </script>
+</body>
+</html>
